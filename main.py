@@ -32,8 +32,8 @@ def main():
   from ccvt.ccvt import Ccvt
 
   fn = './data/mountain2.png'
-  n = 100
-  m = 1000
+  n = 200
+  m = 4000
 
   dens = get_dens_from_img(fn)
   # dens = get_dens_example(100)
@@ -55,16 +55,16 @@ def main():
     for s, sxy in enumerate(sites):
       render.circle(*sxy, r=3*ONE, fill=True)
 
-    # for s,xx in inv_tesselation.iteritems():
+    for s,xx in inv_tesselation.iteritems():
 
-      # sx, sy = sites[s]
+      sx, sy = sites[s]
 
-      # render.set_front(FRONT)
-      # for x in xx:
-        # render.line(sx, sy, domain[x,0], domain[x,1])
+      render.set_front(FRONT)
+      for x in xx:
+        render.line(sx, sy, domain[x,0], domain[x,1])
 
-      # render.set_front(BLACK)
-      # render.line(sx, sy, *org_sites[s,:])
+      render.set_front(BLACK)
+      render.line(sx, sy, *org_sites[s,:])
 
     # render.set_front(BLACK)
     # for i, s in enumerate(org_sites):

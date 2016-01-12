@@ -8,7 +8,6 @@ from __future__ import division
 from collections import defaultdict
 from itertools import product
 from itertools import repeat
-from operator import itemgetter
 from time import time
 
 from numpy.random import randint
@@ -23,21 +22,22 @@ from numpy import row_stack
 from numpy import zeros
 from numpy import array
 from numpy import reshape
+from numpy import argsort
 
 
 
-def __get_inv_tesselation(tesselation):
+def __get_inv_tessellation(tessellation):
 
   inv = defaultdict(set)
-  for i,t in enumerate(tesselation):
+  for i,t in enumerate(tessellation):
     inv[t].add(i)
 
   return inv
 
 def __capacity_randint(m, n):
 
-  tesselation = zeros(m, 'int')
-  tesselation_count = {k:0 for k in xrange(n)}
+  tessellation = zeros(m, 'int')
+  tessellation_count = {k:0 for k in xrange(n)}
   cap = m/n
 
   for i in xrange(m):
@@ -45,60 +45,63 @@ def __capacity_randint(m, n):
     while True:
 
       r = randint(n)
-      if tesselation_count[r]>=cap:
+      if tessellation_count[r]>=cap:
         continue
       else:
-        tesselation[i] = r
-        tesselation_count[r] += 1
+        tessellation[i] = r
+        tessellation_count[r] += 1
         break
 
-  return tesselation
+  return tessellation
+
+def __get_h(dd, xii, si, sj):
+
+  #TODO: heap. this is too slow.
+
+  # xii = (tessellation == si).nonzero()[0]
+
+  hw = dd[xii,si] - dd[xii,sj]
+  hi = array(xii, 'int')
+  s = argsort(hw, kind='mergesort')
+
+  return hi[s],hw[s]
+
+def __remap(tes, inv, xi,xj,si,sj):
+  tes[xi] = sj
+  tes[xj] = si
+  inv[si].remove(xi)
+  inv[si].add(xj)
+  inv[sj].remove(xj)
+  inv[sj].add(xi)
+  return
 
 
 def Ccvt(
   domain,
-  org_sites,
-  tol=1.e-2,
+  sites,
+  tol=1.e-7,
   maxitt=10000
 ):
 
-  itg = itemgetter(1)
-
   m = len(domain)
-  n = len(org_sites)
+  n = len(sites)
   cap = m/n
 
-  sites = zeros((n,2),'float')
-  sites[:] = org_sites[:]
+  sites_prev = zeros((n,2),'float')
+  sites_prev[:] = sites[:]
 
   print('point cloud')
   print('points (m): {:d}, sites (n): {:d}, cap: {:f}'.format(m,n,cap))
 
-
-  def __get_h(dd, xii, si, sj):
-    #TODO: heap. this is too slow.
-    w = dd[xii,si] - dd[xii,sj]
-    res = sorted(zip(xii, w), key=itg)
-    return  res
-
-  def __remap(tes, inv, xi,xj,si,sj):
-    tes[xi] = sj
-    tes[xj] = si
-    inv[si].remove(xi)
-    inv[si].add(xj)
-    inv[sj].remove(xj)
-    inv[sj].add(xi)
-    return
 
   now = time()
 
   for k in xrange(maxitt):
 
     dd = cdist(domain, sites, 'euclidean')
-    tesselation = __capacity_randint(m,n) #  x → s
-    inv_tesselation = __get_inv_tesselation(tesselation) # s → x
+    tessellation = __capacity_randint(m,n) #  x → s
+    inv_tessellation = __get_inv_tessellation(tessellation) # s → x
 
-    max_eps = -1
     i = -1
     while True:
 
@@ -108,56 +111,49 @@ def Ccvt(
 
       stable = True
 
-      for si,sj in product(xrange(n), repeat=2):
+      for si,sj in product(range(n), repeat=2):
 
-        Hi = __get_h(dd, list(inv_tesselation[si]), si, sj)
-        Hj = __get_h(dd, list(inv_tesselation[sj]), sj, si)
+        Hii, Hiw = __get_h(dd, list(inv_tessellation[si]), si, sj)
+        Hjj, Hjw = __get_h(dd, list(inv_tessellation[sj]), sj, si)
 
-        while Hi and Hj:
+        ml = max(len(Hii),len(Hjj))
+        h = -1
 
-          # if Hi is heap this will be better
-          # xi, himax = max(Hi.iteritems(), key=itg)
-          # xj, hjmax = max(Hj.iteritems(), key=itg)
+        while h>-ml-1:
 
-          xi, himax = Hi.pop()
-          xj, hjmax = Hj.pop()
-
-          eps = himax+hjmax
-
-          max_eps = max(eps, max_eps)
-
-          if eps<=0:
+          if Hiw[h] + Hjw[h]<=0:
             break
 
-          __remap(tesselation,inv_tesselation,xi,xj,si,sj)
-          # del(Hi[xi])
-          # del(Hj[xj])
+          __remap(tessellation,inv_tessellation,Hii[h],Hjj[h],si,sj)
 
           stable = False
+          h -= 1
 
       if stable:
         break
 
     agg = [[] for i in repeat(None, n)]
-    for t,xy in zip(tesselation, domain):
+    for t,xy in zip(tessellation, domain):
       agg[t].append(xy)
 
     for k, v in enumerate(agg):
       if v:
         sites[k,:] = mean(v, axis=0)
 
-    cap_count = array([len(v) for v in inv_tesselation.values()],'float')
+    cap_count = array([len(v) for v in inv_tessellation.values()],'float')
     cap_err = square(cap_count/float(cap)-1.0).sum()/n
+    diff_err = norm(sites - sites_prev)/n
+    sites_prev[:] = sites[:]
 
-    if abs(max_eps)<tol:
-      print('terminating, reached tol: {:0.5f} ({:0.5f})'.format(max_eps, tol))
+    if abs(diff_err)<tol:
+      print('terminating, reached diff error: {:0.5f}'.format(diff_err))
       print('capacity error: {:0.5f}'.format(cap_err))
       break
     else:
-      print('eps {:0.5f}, going again ...'.format(max_eps))
+      print('diff error {:0.5f}, going again ...'.format(diff_err))
       print('capacity error: {:0.5f}'.format(cap_err))
 
   print('time: {:0.5f}'.format(time()-now))
 
-  return sites, {k:v for k, v in inv_tesselation.iteritems() if v}
+  return sites, {k:v for k, v in inv_tessellation.iteritems() if v}
 
