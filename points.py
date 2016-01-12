@@ -5,6 +5,9 @@
 from __future__ import division
 from __future__ import print_function
 
+from numpy.random import seed
+seed(3)
+
 
 BACK = [1,1,1,1]
 FRONT = [0,0.7,0.7,0.7]
@@ -26,22 +29,29 @@ def main():
   from dddUtils.pointCloud import point_cloud
   from dddUtils.ioOBJ import export_2d as export
 
-  from ccvt.utils import get_dens_example
-  from ccvt.utils import get_dens_from_img
-  from ccvt.utils import sample_from_dens
-  from ccvt.ccvt import Ccvt
+  from modules.utils import get_dens_example
+  from modules.utils import get_dens_from_img
+  from modules.utils import sample_from_dens
 
-  fn = './data/mountain2.png'
-  n = 200
-  m = 4000
+  from cccvt import Ccvt as ccvt
+  # from ccvt.ccvt import Ccvt as ccvt
 
+  fn = './data/kelp.png'
+  # n = 10000
+  # m = 100000
+  n = 2000
+  m = 20000
+
+  print('get density')
   dens = get_dens_from_img(fn)
   # dens = get_dens_example(100)
 
+  print('sample domain')
   domain = sample_from_dens(dens, m)
+  print('sample dens')
   org_sites = sample_from_dens(dens, n)
 
-  sites, inv_tesselation = Ccvt(domain, org_sites, maxitt=4)
+  sites, inv_tesselation = ccvt(domain, org_sites, maxitt=4)
   export('voronoi','./res/exit.2obj', sites)
 
   def show(render):
@@ -91,7 +101,7 @@ def main():
 
 if __name__ == '__main__':
 
-  if True:
+  if False:
     import pstats
     import cProfile
     pfilename = './profile/profile'

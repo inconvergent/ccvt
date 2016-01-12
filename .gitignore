@@ -6,3 +6,7 @@ build/*
 dist/*
 profile/*
 *.egg*
+*.so
+*.png
+*.2obj
+*.c

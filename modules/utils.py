@@ -9,6 +9,8 @@ from numpy import linspace
 from numpy import meshgrid
 from numpy import floor
 from numpy import zeros
+from numpy import array
+from numpy.linalg import norm
 from numpy.random import random
 from scipy.ndimage import imread
 
@@ -48,4 +50,20 @@ def sample_from_dens(dens, n):
       k += 1
 
   return res
+
+def sample_from_circ(n, rad=0.45):
+
+  res = zeros((n,2),'float')
+  mid = array([0.5,0.5],'float')
+  k = 0
+
+  while k<n:
+
+    xy = (1.0-2*random(2))*0.45
+
+    if norm(xy)<rad:
+      res[k,:] = xy
+      k += 1
+
+  return mid + res
 
