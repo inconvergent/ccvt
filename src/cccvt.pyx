@@ -1,14 +1,19 @@
-#!/usr/bin/python
+#!python
 # -*- coding: utf-8 -*-
+#cython: language_level=3, boundscheck=False, wraparound=False
+#cython: nonecheck=False, cdivision=True
 
 from __future__ import print_function
 from __future__ import division
+
+from libc.stdlib cimport malloc, free
 
 cimport cython
 cimport numpy as np
 from cpython cimport bool
 
-# from libc.math cimport sqrt
+from libc.math cimport sqrt
+from libc.math cimport pow
 
 from time import time
 
@@ -55,13 +60,23 @@ cpdef dict __get_inv_tessellation(long[:] tessellation):
 @cython.boundscheck(False)
 @cython.nonecheck(False)
 @cython.cdivision(True)
-cpdef void __capacity_randint(long[:] tessellation, long m, long n):
-
-  cdef np.ndarray['long', ndim=1] tessellation_count = zeros(n, 'int')
-  cdef long cap = <long>(m/n)
+cpdef double __capacity_randint(long[:] tes, long m, long n):
 
   cdef long i
   cdef long r
+
+  cdef long* count = <long*>malloc(sizeof(long)*n)
+  cdef double cap = <double>m/<double>n
+  cdef long icap = <long>cap
+
+  if m % n != 0:
+    icap += 1
+
+  for i in xrange(n):
+    count[i] = 0
+
+  print('cap', cap)
+  print('icap', icap)
 
   for i in xrange(m):
 
@@ -69,14 +84,32 @@ cpdef void __capacity_randint(long[:] tessellation, long m, long n):
 
       r = randint(n)
       with nogil:
-        if tessellation_count[r]>cap:
+        if count[r]>icap-1:
           continue
         else:
-          tessellation[i] = r
-          tessellation_count[r] += 1
+          tes[i] = r
+          count[r] += 1
           break
 
-  return
+  free(count)
+
+  return cap
+
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+@cython.cdivision(True)
+cpdef double __get_cap_error(dict inv, long n, double cap):
+
+  cdef long k
+  cdef set s
+  cdef double err = 0.0
+
+  for k in xrange(n):
+    s = inv[k]
+    err += square(<double>len(s)/cap-1.0)
+
+  return err/<double>n
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
@@ -119,15 +152,14 @@ cpdef void __simple_sort(long[:,:] a, double[:,:] b, long n, long ind) nogil:
 @cython.nonecheck(False)
 @cython.cdivision(True)
 cpdef long __get_h(
-  double[:,:] dd,
+  double[:,:] domain,
+  double[:,:] sites,
   long[:,:] Hi,
   double[:,:] Hw,
   dict inv,
   long si,
   long sj
 ):
-
-  cdef np.ndarray['long', ndim=1] s
 
   cdef set ii = inv[si]
   cdef set jj = inv[sj]
@@ -137,18 +169,28 @@ cpdef long __get_h(
   cdef long k
   cdef long x
 
+  cdef double tmp1
+  cdef double tmp2
+
+
   k = 0
   for x in ii:
     with nogil:
-      Hw[k,0] = dd[x,si] - dd[x,sj]
       Hi[k,0] = x
+      Hw[k,0] = sqrt(pow(domain[x,0]-sites[si,0],2.0) +
+                     pow(domain[x,1]-sites[si,1],2.0)) -\
+                sqrt(pow(domain[x,0]-sites[sj,0],2.0) +
+                     pow(domain[x,1]-sites[sj,1],2.0))
       k += 1
 
   k = 0
   for x in jj:
     with nogil:
-      Hw[k,1] = dd[x,sj] - dd[x,si]
       Hi[k,1] = x
+      Hw[k,1] = sqrt(pow(domain[x,0]-sites[sj,0],2.0) +
+                     pow(domain[x,1]-sites[sj,1],2.0)) -\
+                sqrt(pow(domain[x,0]-sites[si,0],2.0) +
+                     pow(domain[x,1]-sites[si,1],2.0))
       k += 1
 
   __simple_sort(Hi,Hw,numi,0)
@@ -178,12 +220,7 @@ cpdef Ccvt(
 
   cdef long m = len(domain)
   cdef long n = len(sites)
-  cdef double cap = m/n
-
-  cdef np.ndarray['double', ndim=2] sites_prev = zeros((n,2),'float')
-  sites_prev[:,:] = sites[:,:]
-
-  print('point cloud')
+  cdef double cap = <double>m/<double>n
   print('points (m): {:d}, sites (n): {:d}, cap: {:f}'.format(m,n,cap))
 
   cdef double now = time()
@@ -197,19 +234,27 @@ cpdef Ccvt(
   cdef set points
   cdef bool stable
 
-  cdef long hsize = <long>(6*cap)
-
-  cdef np.ndarray['long', ndim=2] Hi = zeros((hsize,2),'int')
-  cdef np.ndarray['long', ndim=1] tessellation = zeros(m,'int')
-  cdef np.ndarray['double', ndim=2] Hw = zeros((hsize,2),'float')
   cdef double cap_err
-  cdef double c
+  cdef double count
+
+  cdef np.ndarray['double', ndim=2] sites_prev = zeros((n,2),'float')
+  for i in xrange(n):
+    sites_prev[i,0] = sites[i,0]
+    sites_prev[i,1] = sites[i,1]
+
+  cdef long hsize = <long>(6*cap)
+  cdef np.ndarray['long', ndim=2] Hi = zeros((hsize,2),'int')
+  cdef np.ndarray['double', ndim=2] Hw = zeros((hsize,2),'float')
+  cdef np.ndarray['long', ndim=1] tessellation = zeros(m,'int')
 
   for k in xrange(maxitt):
 
-    dd = cdist(domain, sites, 'euclidean')
+    # dd = cdist(domain, sites, 'euclidean')
     __capacity_randint(tessellation,m,n) #  x → s
     inv_tessellation = __get_inv_tessellation(tessellation) # s → x
+
+    cap_err = __get_cap_error(inv_tessellation, n, cap)
+    print('capacity error: {:0.8f}'.format(cap_err))
 
     i = -1
     while True:
@@ -224,7 +269,8 @@ cpdef Ccvt(
         for sj in xrange(n):
 
           ml = __get_h(
-            dd,
+            domain,
+            sites,
             Hi,
             Hw,
             inv_tessellation,
@@ -250,32 +296,33 @@ cpdef Ccvt(
       points = inv_tessellation[k]
       if points:
 
-        c = 0.0
+        count = 0.0
         sites[k,0] = 0.0
         sites[k,1] = 0.0
         for p in points:
           sites[k,0] += domain[p,0]
           sites[k,1] += domain[p,1]
-          c += 1.
+          count += 1.0
 
-        if c>0.0:
-          sites[k,0] /= c
-          sites[k,1] /= c
+        if count>0.0:
+          sites[k,0] /= count
+          sites[k,1] /= count
 
-    for k in xrange(n):
-      cap_err += square(<double>len(inv_tessellation[k])/cap-1.0)
-    cap_err /= <double>n
 
+    cap_err = __get_cap_error(inv_tessellation, n, cap)
     diff_err = norm(sites - sites_prev)/<double>n
-    sites_prev[:] = sites[:]
+    for i in xrange(n):
+      sites_prev[i,0] = sites[i,0]
+      sites_prev[i,1] = sites[i,1]
+
+    print('capacity error: {:0.8f}'.format(cap_err))
+    print('diff error {:0.8f} ... '.format(diff_err))
 
     if abs(diff_err)<tol:
-      print('terminating, reached diff error: {:0.8f}'.format(diff_err))
-      print('capacity error: {:0.8f}'.format(cap_err))
+      print('terminating')
       break
     else:
-      print('diff error {:0.8f}, going again ...'.format(diff_err))
-      print('capacity error: {:0.8f}'.format(cap_err))
+      print('going again')
 
   print('time: {:0.8f}'.format(time()-now))
 

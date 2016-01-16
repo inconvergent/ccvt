@@ -37,10 +37,10 @@ def main():
   # from ccvt.ccvt import Ccvt as ccvt
 
   fn = './data/kelp.png'
-  # n = 10000
-  # m = 100000
-  n = 2000
-  m = 20000
+  n = 30000
+  m = 300000
+  # n = 1000
+  # m = 10000
 
   print('get density')
   dens = get_dens_from_img(fn)
@@ -51,7 +51,7 @@ def main():
   print('sample dens')
   org_sites = sample_from_dens(dens, n)
 
-  sites, inv_tesselation = ccvt(domain, org_sites, maxitt=4)
+  sites, inv_tesselation = ccvt(domain, org_sites, maxitt=5)
   export('voronoi','./res/exit.2obj', sites)
 
   def show(render):
