@@ -33,12 +33,11 @@ def main():
   from modules.utils import get_dens_from_img
   from modules.utils import sample_from_dens
 
-  from cccvt import Ccvt as ccvt
-  # from ccvt.ccvt import Ccvt as ccvt
+  from ccvt import Ccvt as ccvt
 
   fn = './data/kelp.png'
-  n = 30000
-  m = 300000
+  n = 10000
+  m = 100000
   # n = 1000
   # m = 10000
 
@@ -52,7 +51,7 @@ def main():
   org_sites = sample_from_dens(dens, n)
 
   sites, inv_tesselation = ccvt(domain, org_sites, maxitt=5)
-  export('voronoi','./res/exit.2obj', sites)
+  export('voronoi','./res/out.2obj', sites)
 
   def show(render):
     render.clear_canvas()
@@ -87,7 +86,7 @@ def main():
   render = Animate(SIZE, BACK, FRONT, wrap)
   render.set_line_width(ONE)
   show(render)
-  render.write_to_png('./res/exit.png')
+  render.write_to_png('./res/out.png')
 
   def __write_svg_and_exit(*args):
 

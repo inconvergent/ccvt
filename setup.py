@@ -16,14 +16,14 @@ _extra = ['-O3', '-ffast-math']
 
 extensions = [
   Extension(
-    'cccvt',
-    sources = ['./src/cccvt.pyx'],
+    'ccvt',
+    sources = ['./src/ccvt.pyx'],
     extra_compile_args = _extra
   )
 ]
 
 setup(
-  name = "cccvt",
+  name = "ccvt",
   version = '0.0.1',
   author = '@inconvergent',
   install_requires = ['numpy>=1.8.2', 'cython>=0.20.0'],
