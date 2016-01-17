@@ -20,7 +20,6 @@ from time import time
 from numpy.random import randint
 from numpy.linalg import norm
 
-from scipy.spatial.distance import cdist
 from numpy import mean
 from numpy import ceil
 from numpy import square
@@ -146,25 +145,41 @@ cpdef void __simple_sort(long[:,:] a, double[:,:] b, long n, long ind) nogil:
 
   return
 
+@cython.wraparound(False)
+@cython.boundscheck(False)
+@cython.nonecheck(False)
+@cython.cdivision(True)
+cdef void __distance(double* dd, double[:,:] domain, double[:,:] sites, long m, long n) nogil:
+
+  cdef long i
+  cdef long j
+
+  for i in xrange(m):
+    for j in xrange(n):
+      dd[i*n+j] = sqrt(pow(domain[i,0] - sites[j,0],2) +
+                       pow(domain[i,1] - sites[j,1],2))
+
+  return
+
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
 @cython.nonecheck(False)
 @cython.cdivision(True)
-cpdef long __get_h(
-  double[:,:] domain,
-  double[:,:] sites,
+cdef long __get_h(
+  double* dd,
+  long m,
+  long n,
   long[:,:] Hi,
   double[:,:] Hw,
-  dict inv,
+  long[:] ii,
+  long[:] jj,
+  long numi,
+  long numj,
   long si,
   long sj
-):
+) nogil:
 
-  cdef set ii = inv[si]
-  cdef set jj = inv[sj]
-  cdef long numi = len(ii)
-  cdef long numj = len(jj)
   cdef long ml = min(numi,numj)
   cdef long k
   cdef long x
@@ -172,31 +187,22 @@ cpdef long __get_h(
   cdef double tmp1
   cdef double tmp2
 
-
-  k = 0
-  for x in ii:
+  for k in xrange(numi):
+    x = ii[k]
     with nogil:
       Hi[k,0] = x
-      Hw[k,0] = sqrt(pow(domain[x,0]-sites[si,0],2.0) +
-                     pow(domain[x,1]-sites[si,1],2.0)) -\
-                sqrt(pow(domain[x,0]-sites[sj,0],2.0) +
-                     pow(domain[x,1]-sites[sj,1],2.0))
-      k += 1
+      Hw[k,0] = dd[x*n+si] - dd[x*n+sj]
 
-  k = 0
-  for x in jj:
+  for k in xrange(numj):
+    x = jj[k]
     with nogil:
       Hi[k,1] = x
-      Hw[k,1] = sqrt(pow(domain[x,0]-sites[sj,0],2.0) +
-                     pow(domain[x,1]-sites[sj,1],2.0)) -\
-                sqrt(pow(domain[x,0]-sites[si,0],2.0) +
-                     pow(domain[x,1]-sites[si,1],2.0))
-      k += 1
+      Hw[k,1] = dd[x*n+sj] - dd[x*n+si]
 
   __simple_sort(Hi,Hw,numi,0)
   __simple_sort(Hi,Hw,numj,1)
 
-  return min(numi,numj)
+  return ml
 
 @cython.wraparound(False)
 @cython.boundscheck(False)
@@ -218,19 +224,23 @@ cpdef Ccvt(
   long maxitt=10000
 ):
 
-  cdef long m = len(domain)
-  cdef long n = len(sites)
-  cdef double cap = <double>m/<double>n
-  print('points (m): {:d}, sites (n): {:d}, cap: {:f}'.format(m,n,cap))
-
-  cdef double now = time()
-
   cdef long k
   cdef long i
   cdef long h
   cdef long si
   cdef long sj
   cdef long p
+  cdef long m = len(domain)
+  cdef long n = len(sites)
+  cdef double cap = <double>m/<double>n
+  print('points (m): {:d}, sites (n): {:d}, cap: {:f}'.format(m,n,cap))
+
+  cdef double* dd = <double*>malloc(sizeof(double)*m*n)
+  # for i in xrange(m):
+    # dd[i] = <double*>malloc(sizeof(double)*n)
+
+  cdef double now = time()
+
   cdef set points
   cdef bool stable
 
@@ -249,7 +259,8 @@ cpdef Ccvt(
 
   for k in xrange(maxitt):
 
-    # dd = cdist(domain, sites, 'euclidean')
+    print('distance')
+    __distance(dd, domain, sites, m, n)
     __capacity_randint(tessellation,m,n) #  x → s
     inv_tessellation = __get_inv_tessellation(tessellation) # s → x
 
@@ -269,11 +280,15 @@ cpdef Ccvt(
         for sj in xrange(n):
 
           ml = __get_h(
-            domain,
-            sites,
+            dd,
+            m,
+            n,
             Hi,
             Hw,
-            inv_tessellation,
+            array(list(inv_tessellation[si]),'int'),
+            array(list(inv_tessellation[sj]),'int'),
+            len(inv_tessellation[si]),
+            len(inv_tessellation[sj]),
             si,
             sj
           )
@@ -323,6 +338,11 @@ cpdef Ccvt(
       break
     else:
       print('going again')
+
+
+  # for i in xrange(m):
+    # free(dd[i])
+  free(dd)
 
   print('time: {:0.8f}'.format(time()-now))
 
